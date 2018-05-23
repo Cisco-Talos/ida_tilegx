@@ -1,0 +1,74 @@
+include idacfg.mk
+
+all:
+
+# I put some not yet published targets in this optional include
+-include Makefile.extra
+
+D = 1
+
+#CXX=clang++-5.0
+#CC=clang-5.0
+#LD=clang++-5.0
+
+TARGETS+=tilegx64.so
+
+# where the quicinc objdump source can be found
+gnutools= ./binutils
+
+gnutoolsincludes=-I $(gnutools)/include -I $(gnutools)/bfd -I $(gnutools)/include/opcode
+gnutoolsincludes+=-I ./build-mac/opcodes -I ./build-mac/bfd
+CFLAGS=-g -D__LINUX__ -D__IDP__ -D__X64__ -I $(idasdk)/include -I ./binutils/bfd -I ./binutils/include -I ./binutils/include/opcode
+CFLAGS+=-DUSE_STANDARD_FILE_FUNCTIONS  
+CFLAGS+=-DUSE_DANGEROUS_FUNCTIONS
+CFLAGS+=-fPIC
+CFLAGS+=-g $(if $(D),-O0,-O2)
+
+# add this flag when you want verbose logging
+#CFLAGS+=-DTRACELOG
+
+all: $(TARGETS)
+
+tilegx64.so: reg64.o ana64.o emu64.o out64.o ins64.o binutils/bfd/libbfd.a binutils/opcodes/libopcodes.a binutils/libiberty/libiberty.a 
+
+cflags_cpu-tilegx= $(gnutoolsincludes)
+cflags_tilegx= $(gnutoolsincludes)
+cflags_bfd_funcs= $(gnutoolsincludes)
+
+install:  tilegx64.so
+	cp $^  "$(idabin)/procs"
+
+clean:
+	$(RM) $(TARGETS) $(wildcard *.o) $(wildcard *.o)
+	make -C binutils clean
+
+
+%64.o: %.cpp binutils/bfd/config.h binutils/bfd/bfd.h
+	$(CXX) -std=c++11 -c -o $@ $(filter-out %.h,$^) $(cflags_$(basename $(notdir $@))) $(CFLAGS)
+
+%64.o: %.c
+	$(CC)  -c -o $@ $^ $(cflags_$(basename $(notdir $@))) $(CFLAGS)
+%64.o: CFLAGS += -D__EA64__
+
+gt_%.o: $(gnutools)/libiberty/%.c
+	$(CC) -c -o$@ $^ $(cflags_$(basename $(notdir $@)))  $(gnutoolsincludes) $(CFLAGS)
+
+gt_%.o: $(gnutools)/opcodes/%.c
+	$(CC) -c -Wstrict-prototypes -Wmissing-prototypes -o$@ $^ $(cflags_$(basename $(notdir $@)))  $(gnutoolsincludes) $(CFLAGS)
+
+gt_%.o: $(gnutools)/bfd/%.c
+	$(CC) -c -Wstrict-prototypes -Wmissing-prototypes -o$@ $^ $(cflags_$(basename $(notdir $@)))  $(gnutoolsincludes) $(CFLAGS)
+
+gt_%.o: CFLAGS += -include ./binutils/opcodes/sysdep.h
+
+%64.so: 
+	$(CXX) -shared -g -o $@ $^  -L$(idabin) -lida64
+
+binutils/COPYING:
+	mkdir -p binutils; cd binutils; curl -L https://ftp.gnu.org/gnu/binutils/binutils-2.30.tar.xz | tar xJ --strip-components=1
+
+binutils/Makefile: binutils/COPYING
+	cd binutils; CFLAGS=-fPIC ./configure --prefix=$$(pwd)/dist --target=tilegx --disable-multilib
+
+binutils/bfd/libbfd.a binutils/opcodes/libopcodes.a binutils/bfd/config.h binutils/bfd/bfd.h: binutils/Makefile
+	$(MAKE) -C binutils CFLAGS=-fPIC
