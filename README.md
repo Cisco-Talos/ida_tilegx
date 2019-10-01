@@ -31,6 +31,8 @@ Using
 Start ida64. Select "Tilera Tile-GX" as processor in the dialog when opening a
 file. Accept to change the processor type. Disassembly will be slow.
 
+![open dialog](doc/open_dialog_tilegx_marked.png)
+
 License
 =========
 This project is licensed under Apache-2.0.
